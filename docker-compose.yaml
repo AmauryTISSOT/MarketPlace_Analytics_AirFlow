@@ -22,6 +22,11 @@ x-airflow-common: &airflow-common
     AIRFLOW_VAR_API_TOKEN: formation-token-2026
     AIRFLOW_VAR_API_BASE_URL: http://api-simulee:5000
     _PIP_ADDITIONAL_REQUIREMENTS: apache-airflow-providers-postgres apache-airflow-providers-amazon apache-airflow-providers-http apache-airflow-providers-celery boto3 requests
+    # Observabilite - metriques StatsD vers Prometheus
+    AIRFLOW__METRICS__STATSD_ON: "True"
+    AIRFLOW__METRICS__STATSD_HOST: statsd-exporter
+    AIRFLOW__METRICS__STATSD_PORT: "9125"
+    AIRFLOW__METRICS__STATSD_PREFIX: airflow
   volumes:
     - ./dags:/opt/airflow/dags
     - ./logs:/opt/airflow/logs
@@ -125,6 +130,7 @@ services:
     environment:
       MINIO_ROOT_USER: minio_admin
       MINIO_ROOT_PASSWORD: minio_password_2026
+      MINIO_PROMETHEUS_AUTH_TYPE: public
     ports:
       - "9000:9000"
       - "9001:9001"
@@ -294,12 +300,73 @@ services:
     networks:
       - airflow-net
 
+  # ---------------------------------------------------------------------------
+  # Observabilite - Prometheus
+  # ---------------------------------------------------------------------------
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.retention.time=7d"
+    networks:
+      - airflow-net
+
+  # ---------------------------------------------------------------------------
+  # Observabilite - Grafana (port 3001 pour eviter conflit avec Metabase)
+  # ---------------------------------------------------------------------------
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3001:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+    networks:
+      - airflow-net
+
+  # ---------------------------------------------------------------------------
+  # Observabilite - Exporters
+  # ---------------------------------------------------------------------------
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:v0.17.1
+    environment:
+      DATA_SOURCE_NAME: "postgresql://airflow:airflow@postgres-airflow:5432/airflow?sslmode=disable"
+    ports:
+      - "9187:9187"
+    networks:
+      - airflow-net
+
+  statsd-exporter:
+    image: prom/statsd-exporter:v0.28.0
+    ports:
+      - "9102:9102"   # HTTP /metrics scrape par Prometheus
+      - "9125:9125/udp"  # UDP StatsD depuis Airflow
+    networks:
+      - airflow-net
+
+  node-exporter:
+    image: prom/node-exporter:v1.9.1
+    ports:
+      - "9100:9100"
+    networks:
+      - airflow-net
+
 volumes:
   postgres-airflow-data:
   postgres-dwh-data:
   postgres-source-data:
   minio-data:
   pgadmin-data:
+  prometheus-data:
+  grafana-data:
 
 networks:
   airflow-net:

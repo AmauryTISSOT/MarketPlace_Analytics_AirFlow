@@ -1,0 +1,106 @@
+{
+  "title": "Airflow Monitoring",
+  "uid": "airflow-monitoring",
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "30s",
+  "tags": ["airflow"],
+  "time": { "from": "now-1h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Scheduler Heartbeat",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus" },
+          "expr": "airflow_scheduler_heartbeat_total",
+          "legendFormat": "heartbeat"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Tasks Success vs Failed",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 0, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus" },
+          "expr": "airflow_ti_successes_total",
+          "legendFormat": "success"
+        },
+        {
+          "datasource": { "type": "prometheus" },
+          "expr": "airflow_ti_failures_total",
+          "legendFormat": "failed"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "DAGs en cours d execution",
+      "type": "stat",
+      "gridPos": { "x": 0, "y": 8, "w": 6, "h": 4 },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus" },
+          "expr": "airflow_dag_run_currently_running",
+          "legendFormat": "running"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Taille du DAGBag",
+      "type": "stat",
+      "gridPos": { "x": 6, "y": 8, "w": 6, "h": 4 },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus" },
+          "expr": "airflow_dagbag_size",
+          "legendFormat": "DAGs"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Erreurs import DAGs",
+      "type": "stat",
+      "gridPos": { "x": 12, "y": 8, "w": 6, "h": 4 },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus" },
+          "expr": "airflow_dag_processing_import_errors",
+          "legendFormat": "import errors"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 1 }
+            ]
+          },
+          "color": { "mode": "thresholds" }
+        }
+      }
+    },
+    {
+      "id": 6,
+      "title": "Duree moyenne des tasks (s)",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 12, "w": 24, "h": 8 },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus" },
+          "expr": "rate(airflow_ti_finish_duration_sum[5m]) / rate(airflow_ti_finish_duration_count[5m])",
+          "legendFormat": "avg task duration"
+        }
+      ]
+    }
+  ]
+}

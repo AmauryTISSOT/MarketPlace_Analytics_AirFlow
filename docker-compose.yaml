@@ -14,11 +14,14 @@ x-airflow-common: &airflow-common
     AIRFLOW__CORE__LOAD_EXAMPLES: "false"
     AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
     AIRFLOW__WEBSERVER__SECRET_KEY: formation-airflow-secret-key-2026
+    AIRFLOW__API__SECRET_KEY: formation-airflow-secret-key-2026
+    AIRFLOW__API_AUTH__JWT_SECRET: formation-airflow-secret-key-2026
     # Connections pre-configurees via variables d'env
     AIRFLOW_CONN_POSTGRES_DWH: postgresql://dwh_user:dwh_password@postgres-dwh:5432/dwh
     AIRFLOW_CONN_POSTGRES_SOURCE: postgresql://source_user:source_password@postgres-source:5432/source_db
     AIRFLOW_CONN_MINIO_LOCAL: aws://minio_admin:minio_password_2026@?endpoint_url=http%3A%2F%2Fminio%3A9000&region_name=us-east-1
-    AIRFLOW_CONN_MARKETPLACE_API: http://:@api-simulee-1:5000?password=formation-token-2026
+    AIRFLOW__CORE__EXECUTION_API_SERVER_URL: http://airflow-apiserver:8080/execution/
+    AIRFLOW_CONN_MARKETPLACE_API: http://:${API_TOKEN}@${API_HOST}:${API_PORT}
     AIRFLOW_VAR_MARKETPLACE_API_TOKEN: formation-token-2026
     AIRFLOW_VAR_MARKETPLACE_API_BASE_URL: http://api-simulee-1:5000
     _PIP_ADDITIONAL_REQUIREMENTS: apache-airflow-providers-postgres apache-airflow-providers-amazon apache-airflow-providers-http apache-airflow-providers-celery boto3 requests

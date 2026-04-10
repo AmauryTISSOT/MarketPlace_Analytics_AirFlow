@@ -19,7 +19,7 @@ def marketplace_orders_ingest_daily():
 
     @task
     def extract_orders(ds: str) -> str:
-        from plugins.hooks.marketplace_api import MarketplaceAPIHook
+        from hooks.marketplace_api import MarketplaceAPIHook
 
         print("ici dag")
 

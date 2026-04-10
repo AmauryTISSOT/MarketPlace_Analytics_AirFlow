@@ -131,7 +131,7 @@ services:
     volumes:
       - minio-data:/data
     healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -144,12 +144,12 @@ services:
   minio-init:
     image: minio/mc:latest
     entrypoint: /bin/sh
-    command: /seed/seed-csv.sh
+    command: /seed/init-marketplace.sh
     environment:
       MINIO_ROOT_USER: minio_admin
       MINIO_ROOT_PASSWORD: minio_password_2026
     volumes:
-      - ./init-minio/seed-csv.sh:/seed/seed-csv.sh
+      - ./init-minio/init-marketplace.sh:/seed/init-marketplace.sh
     depends_on:
       minio:
         condition: service_healthy
@@ -162,7 +162,7 @@ services:
   api-simulee:
     build:
       context: api
-      dockerfile: api/Dockerfile
+      dockerfile: Dockerfile
     ports:
       - "5000:5000"
     environment:

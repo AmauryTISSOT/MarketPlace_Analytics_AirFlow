@@ -48,6 +48,12 @@ CITIES = [
 ]
 CATEGORIES = ["electronics", "accessories", "power", "connectivity", "mechanical"]
 
+SELLERS = [
+    {"id": "SELL-0001", "name": "Seller 1", "country": "FR", "joined_date": "2024-01-10"},
+    {"id": "SELL-0002", "name": "Seller 2", "country": "BE", "joined_date": "2024-02-15"},
+    {"id": "SELL-0003", "name": "Seller 3", "country": "ES", "joined_date": "2024-03-01"},
+]
+
 
 @app.route("/health")
 def health():
@@ -76,7 +82,9 @@ def get_orders():
         orders.append({
             "id": f"ORD-{date_str.replace('-', '')}-{i:04d}",
             "date": date_str,
+            "seller_id": f"SELL-{(s % 3) + 1:04d}",
             "customer_id": f"CUST-{(s % 200):04d}",
+            "product_id": f"PROD-{s % len(PRODUCTS):04d}",
             "product": PRODUCTS[s % len(PRODUCTS)],
             "quantity": qty,
             "unit_price": price,
@@ -122,6 +130,11 @@ def get_products():
             "active": True,
         })
     return jsonify(products)
+
+@app.route("/sellers")
+@require_auth
+def get_sellers():
+    return jsonify(SELLERS)
 
 
 @app.route("/metrics")

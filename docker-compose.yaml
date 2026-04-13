@@ -4,7 +4,7 @@
 # =============================================================================
 
 x-airflow-common: &airflow-common
-  image: apache/airflow:3.2.0rc2-python3.14
+  image: apache/airflow:3.1.8
   env_file: .env
   environment:
     AIRFLOW__CORE__EXECUTOR: CeleryExecutor
@@ -14,13 +14,16 @@ x-airflow-common: &airflow-common
     AIRFLOW__CORE__LOAD_EXAMPLES: "false"
     AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
     AIRFLOW__WEBSERVER__SECRET_KEY: formation-airflow-secret-key-2026
+    AIRFLOW__API__SECRET_KEY: formation-airflow-secret-key-2026
+    AIRFLOW__API_AUTH__JWT_SECRET: formation-airflow-secret-key-2026
     # Connections pre-configurees via variables d'env
     AIRFLOW_CONN_POSTGRES_DWH: postgresql://dwh_user:dwh_password@postgres-dwh:5432/dwh
     AIRFLOW_CONN_POSTGRES_SOURCE: postgresql://source_user:source_password@postgres-source:5432/source_db
     AIRFLOW_CONN_MINIO_LOCAL: aws://minio_admin:minio_password_2026@?endpoint_url=http%3A%2F%2Fminio%3A9000&region_name=us-east-1
-    AIRFLOW_CONN_API_ECOMMERCE: http://api-simulee:5000@?headers=%7B%22Authorization%22%3A+%22Bearer+formation-token-2026%22%7D
-    AIRFLOW_VAR_API_TOKEN: formation-token-2026
-    AIRFLOW_VAR_API_BASE_URL: http://api-simulee:5000
+    AIRFLOW__CORE__EXECUTION_API_SERVER_URL: http://airflow-apiserver:8080/execution/
+    AIRFLOW_CONN_MARKETPLACE_API: http://:${API_TOKEN}@${API_HOST}:${API_PORT}
+    AIRFLOW_VAR_MARKETPLACE_API_TOKEN: formation-token-2026
+    AIRFLOW_VAR_MARKETPLACE_API_BASE_URL: http://api-simulee-1:5000
     _PIP_ADDITIONAL_REQUIREMENTS: apache-airflow-providers-postgres apache-airflow-providers-amazon apache-airflow-providers-http apache-airflow-providers-celery boto3 requests
     # Observabilite - metriques StatsD vers Prometheus
     AIRFLOW__METRICS__STATSD_ON: "True"
@@ -45,7 +48,7 @@ services:
   # PostgreSQL - Airflow Metadata DB
   # ---------------------------------------------------------------------------
   postgres-airflow:
-    image: postgres:16
+    image: postgres:17
     environment:
       POSTGRES_USER: airflow
       POSTGRES_PASSWORD: airflow
@@ -66,7 +69,7 @@ services:
   # PostgreSQL - DWH cible (port 5433)
   # ---------------------------------------------------------------------------
   postgres-dwh:
-    image: postgres:16
+    image: postgres:17
     environment:
       POSTGRES_USER: dwh_user
       POSTGRES_PASSWORD: dwh_password
@@ -88,7 +91,7 @@ services:
   # PostgreSQL - Source DB (Sujet B)
   # ---------------------------------------------------------------------------
   postgres-source:
-    image: postgres:16
+    image: postgres:17
     environment:
       POSTGRES_USER: source_user
       POSTGRES_PASSWORD: source_password
@@ -125,7 +128,7 @@ services:
   # MinIO - Object Storage (S3 compatible)
   # ---------------------------------------------------------------------------
   minio:
-    image: minio/minio:latest
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: minio_admin
@@ -301,6 +304,28 @@ services:
       - airflow-net
 
   # ---------------------------------------------------------------------------
+  # Metabase
+  # ---------------------------------------------------------------------------
+
+  metabase:
+    image: metabase/metabase:latest
+    env_file:
+      - .env
+    ports:
+      - "3000:3000"
+    volumes:
+      - metabase-data:/metabase-data
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+    depends_on:
+      - postgres-dwh
+    networks:
+      - airflow-net
+
+  # ---------------------------------------------------------------------------
   # Observabilite - Prometheus
   # ---------------------------------------------------------------------------
   prometheus:
@@ -365,6 +390,7 @@ volumes:
   postgres-source-data:
   minio-data:
   pgadmin-data:
+  metabase-data:
   prometheus-data:
   grafana-data:
 

@@ -69,8 +69,10 @@ kit-projet/
 
 ## Lancer les tests
 
+pytest n'est pas installé par défaut dans le container Airflow. Il faut l'installer à la volée avant de lancer les tests :
+
 ```bash
-docker compose exec airflow-worker pytest tests/ -v
+docker compose exec airflow-worker bash -c "pip install pytest && python -m pytest tests/ -v"
 ```
 
 ## Sujets de mini-projets

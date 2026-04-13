@@ -4,6 +4,7 @@ import json
 from datetime import datetime
 
 from airflow.decorators import dag, task
+from airflow.sdk import Asset
 from operators.data_quality_operator import DataQualityOperator
 
 
@@ -27,7 +28,7 @@ def map_orders_to_staging_rows(orders):
 
 @dag(
     dag_id="marketplace_orders_ingest_daily",
-    schedule=None,
+    schedule="@daily",
     start_date=datetime(2025, 1, 1),
     catchup=False,
     max_active_runs=1,
@@ -113,7 +114,7 @@ def marketplace_orders_ingest_daily():
 
         return len(rows)
 
-    @task
+    @task(outlets=[Asset("raw_orders")])
     def transform_staging_to_dwh(ds: str = None) -> None:
         from airflow.providers.postgres.hooks.postgres import PostgresHook
 

@@ -1,4 +1,4 @@
-# Marketplace Analytics — IPSSI 2026
+# Marketplace Analytics — IPSSI MIA 26.2 2026
 
 ## Membres
 
@@ -41,11 +41,66 @@ flowchart LR
 
 ## DAGs livres
 
-| DAG                                     | Role                                                                                     | Schedule                    |
-| --------------------------------------- | ---------------------------------------------------------------------------------------- | --------------------------- |
-| `marketplace_orders_ingest_daily`       | Extract orders API → MinIO → staging → fact_orders (avec data quality check + branching) | Manuel / trigger externe    |
-| `marketplace_dwh_build_daily`           | Refresh des dimensions (seller, customer, product, date) depuis l'API                    | `@daily`                    |
-| `marketplace_analytics_aggregate_daily` | Agregation KPIs : daily_metrics, seller_metrics, category_metrics, customer_metrics      | Asset-triggered (apres DWH) |
+| DAG                                     | Role                                                                                     | Schedule                       |
+| --------------------------------------- | ---------------------------------------------------------------------------------------- | ------------------------------ |
+| `marketplace_orders_ingest_daily`       | Extract orders API → MinIO → staging → fact_orders (avec data quality check + branching) | `@daily`                       |
+| `marketplace_dwh_build_daily`           | Refresh des dimensions (seller, customer, product, date) depuis l'API                    | Asset-triggered (`raw_orders`) |
+| `marketplace_analytics_aggregate_daily` | Agregation KPIs : daily_metrics, seller_metrics, category_metrics, customer_metrics      | Asset-triggered (`dwh_orders`) |
+
+## Workflow des DAGs
+
+Les 3 DAGs sont chaines par des Assets Airflow. Le DAG 1 tourne chaque jour, et declenche automatiquement les DAGs suivants via des Assets.
+
+```mermaid
+flowchart TB
+    subgraph DAG1["DAG 1 : marketplace_orders_ingest_daily (@daily)"]
+        direction TB
+        extract["extract_orders\n(API → /tmp JSON)"]
+        minio["upload_raw_to_minio\n(JSON → MinIO)"]
+        staging["load_staging_orders\n(JSON → staging.orders)"]
+        dq["check_data_quality\n(5 regles SQL)"]
+        branch["branch_on_dq_result"]
+        transform["transform_staging_to_dwh\n(staging → dwh.fact_orders)"]
+        alert["dq_alert\n(log erreur)"]
+
+        extract --> minio
+        extract --> staging
+        staging --> dq --> branch
+        branch -->|pass| transform
+        branch -->|fail| alert
+    end
+
+    subgraph DAG2["DAG 2 : marketplace_dwh_build_daily"]
+        direction TB
+        seller["refresh_dim_seller"]
+        customer["refresh_dim_customer"]
+        product["refresh_dim_product"]
+        date_dim["refresh_dim_date"]
+        signal["signal_dwh_ready"]
+
+        seller --> signal
+        customer --> signal
+        product --> signal
+        date_dim --> signal
+    end
+
+    subgraph DAG3["DAG 3 : marketplace_analytics_aggregate_daily"]
+        direction TB
+        daily["build_daily_metrics"]
+        seller_m["build_seller_metrics"]
+        cat_m["build_category_metrics"]
+        cust_m["build_customer_metrics"]
+
+        daily --> seller_m
+        daily --> cat_m
+        daily --> cust_m
+    end
+
+    transform -- "Asset: raw_orders" --> DAG2
+    signal -- "Asset: dwh_orders" --> DAG3
+```
+
+> **Note** : si le check data quality echoue (branche `fail`), l'Asset `raw_orders` n'est pas produit et le DAG 2 ne se declenche pas. Le upload MinIO est en parallele du staging : si MinIO echoue, le reste du pipeline continue (le DAG est marque failed dans l'UI mais les donnees arrivent quand meme dans le DWH).
 
 ## Composants custom
 
@@ -106,8 +161,6 @@ docker compose exec airflow-worker bash -c "pip install pytest && python -m pyte
 - **Asset-triggered scheduling** entre les DAGs : le DAG analytics se declenche automatiquement quand le DAG ingest a fini, pas besoin de TriggerDagRunOperator
 - **PostgreSQL 17** pour le DWH : version recente, stable, compatible avec les providers Airflow
 
-## Limitations connues
+## Difficultés rencontrées
 
 - Il arrive que l'enregistrement des données dans le MinIo echoue, malgré nos meilleurs efforts, nous ne sommes pas parvenu à corriger ce problème.
-- Le DAG bonus `marketplace_anomaly_detect_daily` (detection d'anomalies avec moyenne glissante 7j) n'est pas encore implemente
-- L'endpoint `/sellers` de l'API est un ajout custom (non present dans le sujet original)

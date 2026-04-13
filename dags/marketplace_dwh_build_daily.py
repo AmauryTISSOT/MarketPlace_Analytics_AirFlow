@@ -4,14 +4,15 @@ import json
 from datetime import datetime
 
 from airflow.decorators import dag, task
+from airflow.sdk import Asset
 
 
-# DAG 2 : on refresh les tables de dimensions chaque jour
-# les dimensions doivent etre remplies AVANT de pouvoir inserer dans fact_orders
+# DAG 2 : on refresh les tables de dimensions
+# declenche automatiquement quand DAG 1 produit l'asset "raw_orders"
 
 @dag(
     dag_id="marketplace_dwh_build_daily",
-    schedule="@daily",
+    schedule=[Asset("raw_orders")],
     start_date=datetime(2025, 1, 1),
     catchup=False,
     max_active_runs=1,
@@ -144,11 +145,17 @@ def marketplace_dwh_build_daily():
             },
         )
 
+    @task(outlets=[Asset("dwh_orders")])
+    def signal_dwh_ready():
+        print("dimensions refreshed, dwh pret")
+
     # les 4 tasks sont independantes donc elles tournent en parallele
-    refresh_dim_seller()
-    refresh_dim_customer()
-    refresh_dim_product()
-    refresh_dim_date()
+    # une fois toutes finies, on signal que le dwh est pret (declenche DAG 3)
+    s = refresh_dim_seller()
+    c = refresh_dim_customer()
+    p = refresh_dim_product()
+    d = refresh_dim_date()
+    [s, c, p, d] >> signal_dwh_ready()
 
 
 marketplace_dwh_build_daily()

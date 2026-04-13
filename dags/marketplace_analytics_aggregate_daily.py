@@ -23,8 +23,11 @@ def marketplace_analytics_aggregate_daily():
 
     # 1. KPI globaux (CA, volume, panier moyen)
     @task
-    def build_daily_metrics(ds: str) -> None:
+    def build_daily_metrics(ds: str = None) -> None:
         from airflow.providers.postgres.hooks.postgres import PostgresHook
+
+        if ds is None:
+            ds = datetime.now().strftime("%Y-%m-%d")
 
         pg = PostgresHook(postgres_conn_id="postgres_dwh")
 
@@ -48,8 +51,11 @@ def marketplace_analytics_aggregate_daily():
 
     # 2. Top sellers (dashboard Metabase)
     @task
-    def build_seller_metrics(ds: str) -> None:
+    def build_seller_metrics(ds: str = None) -> None:
         from airflow.providers.postgres.hooks.postgres import PostgresHook
+
+        if ds is None:
+            ds = datetime.now().strftime("%Y-%m-%d")
 
         pg = PostgresHook(postgres_conn_id="postgres_dwh")
 
@@ -57,7 +63,7 @@ def marketplace_analytics_aggregate_daily():
             """
             DELETE FROM analytics.seller_metrics WHERE dt = %(ds)s;
 
-            INSERT INTO analytics.seller_metrics
+            INSERT INTO analytics.seller_metrics (dt, seller_id, seller_name, revenue, orders_count)
             SELECT
                 o.dt,
                 o.seller_id,
@@ -74,8 +80,11 @@ def marketplace_analytics_aggregate_daily():
 
     # 3. Répartition par catégorie
     @task
-    def build_category_metrics(ds: str) -> None:
+    def build_category_metrics(ds: str = None) -> None:
         from airflow.providers.postgres.hooks.postgres import PostgresHook
+
+        if ds is None:
+            ds = datetime.now().strftime("%Y-%m-%d")
 
         pg = PostgresHook(postgres_conn_id="postgres_dwh")
 
@@ -83,7 +92,7 @@ def marketplace_analytics_aggregate_daily():
             """
             DELETE FROM analytics.category_metrics WHERE dt = %(ds)s;
 
-            INSERT INTO analytics.category_metrics
+            INSERT INTO analytics.category_metrics (dt, category, revenue, orders_count)
             SELECT
                 o.dt,
                 p.category,
@@ -99,8 +108,11 @@ def marketplace_analytics_aggregate_daily():
 
     #  4. Clients actifs vs dormants
     @task
-    def build_customer_metrics(ds: str) -> None:
+    def build_customer_metrics(ds: str = None) -> None:
         from airflow.providers.postgres.hooks.postgres import PostgresHook
+
+        if ds is None:
+            ds = datetime.now().strftime("%Y-%m-%d")
 
         pg = PostgresHook(postgres_conn_id="postgres_dwh")
 

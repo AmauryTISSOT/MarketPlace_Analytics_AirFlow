@@ -79,12 +79,14 @@ CREATE TABLE IF NOT EXISTS dwh.dim_date (
     day_of_week INTEGER NOT NULL
 );
 
+-- pas de FK pour eviter les problemes d'ordre d'execution entre les DAGs
+-- (les dimensions sont remplies par un DAG different des facts)
 CREATE TABLE IF NOT EXISTS dwh.fact_orders (
     order_id    VARCHAR(30) PRIMARY KEY,
-    seller_id   VARCHAR(30) NOT NULL REFERENCES dwh.dim_seller(seller_id),
-    customer_id VARCHAR(30) NOT NULL REFERENCES dwh.dim_customer(customer_id),
-    product_id  VARCHAR(30) NOT NULL REFERENCES dwh.dim_product(product_id),
-    dt  DATE    NOT NULL REFERENCES dwh.dim_date(dt),
+    seller_id   VARCHAR(30) NOT NULL,
+    customer_id VARCHAR(30) NOT NULL,
+    product_id  VARCHAR(30) NOT NULL,
+    dt  DATE    NOT NULL,
     quantity    INTEGER NOT NULL,
     total_amount DECIMAL(10,2)  NOT NULL,
     status  VARCHAR(20) NOT NULL,

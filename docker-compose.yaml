@@ -4,7 +4,7 @@
 # =============================================================================
 
 x-airflow-common: &airflow-common
-  image: apache/airflow:3.2.0rc2-python3.14
+  image: apache/airflow:3.1.8
   env_file: .env
   environment:
     AIRFLOW__CORE__EXECUTOR: CeleryExecutor
@@ -43,7 +43,7 @@ services:
   # PostgreSQL - Airflow Metadata DB
   # ---------------------------------------------------------------------------
   postgres-airflow:
-    image: postgres:16
+    image: postgres:17
     environment:
       POSTGRES_USER: airflow
       POSTGRES_PASSWORD: airflow
@@ -64,7 +64,7 @@ services:
   # PostgreSQL - DWH cible (port 5433)
   # ---------------------------------------------------------------------------
   postgres-dwh:
-    image: postgres:16
+    image: postgres:17
     environment:
       POSTGRES_USER: dwh_user
       POSTGRES_PASSWORD: dwh_password
@@ -86,7 +86,7 @@ services:
   # PostgreSQL - Source DB (Sujet B)
   # ---------------------------------------------------------------------------
   postgres-source:
-    image: postgres:16
+    image: postgres:17
     environment:
       POSTGRES_USER: source_user
       POSTGRES_PASSWORD: source_password
@@ -123,7 +123,7 @@ services:
   # MinIO - Object Storage (S3 compatible)
   # ---------------------------------------------------------------------------
   minio:
-    image: minio/minio:latest
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: minio_admin

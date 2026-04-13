@@ -100,32 +100,37 @@ CREATE INDEX IF NOT EXISTS idx_fact_orders_product_id  ON dwh.fact_orders(produc
 -- ANALYTICS
 -- =============================================================================
 
-CREATE TABLE IF NOT EXISTS analytics.daily_summary (
-    dt DATE    NOT NULL PRIMARY KEY,
-    total_orders     INTEGER,
-    total_revenue    DECIMAL(12,2),
-    avg_order_value  DECIMAL(10,2),
-    unique_customers INTEGER,
-    top_product      VARCHAR(100),
-    loaded_at        TIMESTAMP DEFAULT NOW()
-    );
+CREATE TABLE IF NOT EXISTS  analytics.daily_metrics (
+    dt DATE PRIMARY KEY,
+    orders_count INT,
+    total_quantity INT,
+    gmv NUMERIC,
+    avg_order_value NUMERIC
+);
 
-CREATE TABLE IF NOT EXISTS analytics.seller_daily (
+CREATE TABLE IF NOT EXISTS analytics.seller_metrics (
     dt              DATE NOT NULL,
     seller_id       VARCHAR(30) NOT NULL,
-    total_orders    INTEGER,
-    total_revenue   DECIMAL(12,2),
+    seller_name     TEXT,
+    orders_count    INTEGER,
+    revenue   DECIMAL(12,2),
     avg_order_value DECIMAL(10,2),
     loaded_at       TIMESTAMP DEFAULT NOW(),
     PRIMARY KEY (dt, seller_id)
     );
 
-CREATE TABLE IF NOT EXISTS analytics.category_daily (
+CREATE TABLE IF NOT EXISTS analytics.category_metrics (
     dt              DATE NOT NULL,
     category        VARCHAR(50) NOT NULL,
-    total_orders    INTEGER,
-    total_revenue   DECIMAL(12,2),
+    orders_count    INTEGER,
+    revenue         DECIMAL(12,2),
     avg_order_value DECIMAL(10,2),
     loaded_at       TIMESTAMP DEFAULT NOW(),
     PRIMARY KEY (dt, category)
     );
+
+
+CREATE TABLE IF NOT EXISTS analytics.customer_metrics (
+    dt DATE PRIMARY KEY,
+    active_customers INT
+);

@@ -97,6 +97,10 @@ class MarketplaceAPIHook(BaseHook):
         print("inside get products")
         return self._request("GET", "/products")
 
+    def get_customers(self, limit: int = 500) -> list[dict[str, Any]]:
+        print("inside get customers")
+        return self._request("GET", "/customers", params={"limit": limit})
+
     def get_sellers(self) -> list[dict[str, Any]]:
         print("inside get sellers")
         return self._request("GET", "/sellers")

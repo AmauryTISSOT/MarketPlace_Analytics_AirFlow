@@ -6,10 +6,11 @@ from datetime import datetime
 from airflow.decorators import dag, task
 
 
-def map_orders_to_staging_rows(orders: list[dict]) -> list[tuple]:
-    """Transforme les orders JSON de l'API en tuples pour staging.orders."""
-    return [
-        (
+def map_orders_to_staging_rows(orders):
+    """transforme la liste de commandes JSON en liste de tuples pour le staging"""
+    result = []
+    for order in orders:
+        row = (
             order["id"],
             order["seller_id"],
             order["customer_id"],
@@ -19,8 +20,8 @@ def map_orders_to_staging_rows(orders: list[dict]) -> list[tuple]:
             order["total"],
             order["status"],
         )
-        for order in orders
-    ]
+        result.append(row)
+    return result
 
 
 @dag(
@@ -34,53 +35,66 @@ def map_orders_to_staging_rows(orders: list[dict]) -> list[tuple]:
 def marketplace_orders_ingest_daily():
 
     @task
-    def extract_orders(ds: str) -> str:
+    def extract_orders(ds: str = None) -> str:
         from hooks.marketplace_api import MarketplaceAPIHook
+
+        # si ds est pas fourni (trigger manuel) on prend aujourd'hui
+        if ds is None:
+            ds = datetime.now().strftime("%Y-%m-%d")
 
         hook = MarketplaceAPIHook(marketplace_api_conn_id="marketplace_api")
         orders = hook.get_orders(ds)
+        print(f"extraction de {len(orders)} commandes pour {ds}")
 
+        # on sauvegarde en local pour les autres tasks
         local_path = f"/tmp/orders_{ds}.json"
-        with open(local_path, "w", encoding="utf-8") as file:
-            json.dump(orders, file, ensure_ascii=False)
+        with open(local_path, "w", encoding="utf-8") as f:
+            json.dump(orders, f, ensure_ascii=False)
 
         return local_path
 
     @task
-    def upload_raw_to_minio(local_path: str, ds: str) -> str:
+    def upload_raw_to_minio(local_path: str, ds: str = None) -> str:
         from airflow.providers.amazon.aws.hooks.s3 import S3Hook
 
-        bucket_name = "marketplace-raw"
-        object_key = f"orders/dt={ds}/orders.json"
+        if ds is None:
+            ds = datetime.now().strftime("%Y-%m-%d")
 
-        s3_hook = S3Hook(aws_conn_id="minio_local")
-        s3_hook.load_file(
+        bucket = "marketplace-raw"
+        key = f"orders/dt={ds}/orders.json"
+
+        s3 = S3Hook(aws_conn_id="minio_local")
+        s3.load_file(
             filename=local_path,
-            key=object_key,
-            bucket_name=bucket_name,
+            key=key,
+            bucket_name=bucket,
             replace=True,
         )
+        print(f"uploaded to s3://{bucket}/{key}")
 
-        return f"s3://{bucket_name}/{object_key}"
+        return f"s3://{bucket}/{key}"
 
     @task
-    def load_staging_orders(local_path: str, ds: str) -> int:
+    def load_staging_orders(local_path: str, ds: str = None) -> int:
         from airflow.providers.postgres.hooks.postgres import PostgresHook
 
-        with open(local_path, "r", encoding="utf-8") as file:
-            orders = json.load(file)
+        if ds is None:
+            ds = datetime.now().strftime("%Y-%m-%d")
+
+        with open(local_path, "r", encoding="utf-8") as f:
+            orders = json.load(f)
 
         rows = map_orders_to_staging_rows(orders)
 
-        pg_hook = PostgresHook(postgres_conn_id="postgres_dwh")
+        pg = PostgresHook(postgres_conn_id="postgres_dwh")
 
-        # Idempotence : DELETE avant INSERT sur la partition dt
-        pg_hook.run(
+        # on supprime les donnees de la date avant de re-inserer (idempotence)
+        pg.run(
             "DELETE FROM staging.orders WHERE dt = %s",
             parameters=(ds,),
         )
 
-        pg_hook.insert_rows(
+        pg.insert_rows(
             table="staging.orders",
             rows=rows,
             target_fields=[
@@ -94,17 +108,21 @@ def marketplace_orders_ingest_daily():
                 "status",
             ],
         )
+        print(f"charge {len(rows)} lignes dans staging.orders")
 
         return len(rows)
 
     @task
-    def transform_staging_to_dwh(ds: str) -> None:
+    def transform_staging_to_dwh(ds: str = None) -> None:
         from airflow.providers.postgres.hooks.postgres import PostgresHook
 
-        pg_hook = PostgresHook(postgres_conn_id="postgres_dwh")
+        if ds is None:
+            ds = datetime.now().strftime("%Y-%m-%d")
 
-        # Pattern idempotent du sujet (section 9.3) : DELETE + INSERT par partition
-        pg_hook.run(
+        pg = PostgresHook(postgres_conn_id="postgres_dwh")
+
+        # pattern idempotent : on delete la partition puis on re-insere depuis staging
+        pg.run(
             """
             DELETE FROM dwh.fact_orders WHERE dt = %(ds)s;
             INSERT INTO dwh.fact_orders
@@ -118,11 +136,13 @@ def marketplace_orders_ingest_daily():
             """,
             parameters={"ds": ds},
         )
+        print(f"transform staging -> dwh.fact_orders done pour {ds}")
 
+    # enchainement des tasks
     local_path = extract_orders()
     upload_raw_to_minio(local_path)
-    staging_done = load_staging_orders(local_path)
-    transform_staging_to_dwh() << staging_done
+    nb_rows = load_staging_orders(local_path)
+    transform_staging_to_dwh() << nb_rows
 
 
 marketplace_orders_ingest_daily()

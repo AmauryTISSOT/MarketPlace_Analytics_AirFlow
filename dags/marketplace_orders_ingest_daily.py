@@ -4,6 +4,7 @@ import json
 from datetime import datetime
 
 from airflow.decorators import dag, task
+from operators.data_quality_operator import DataQualityOperator
 
 
 def map_orders_to_staging_rows(orders):
@@ -138,11 +139,67 @@ def marketplace_orders_ingest_daily():
         )
         print(f"transform staging -> dwh.fact_orders done pour {ds}")
 
+    # regles de qualite pour staging.orders
+    dq_rules = [
+        {
+            "name": "not_null_order_id",
+            "sql": "SELECT COUNT(*) FROM staging.orders WHERE order_id IS NULL AND dt = '{{ ds }}'",
+        },
+        {
+            "name": "not_empty_status",
+            "sql": "SELECT COUNT(*) FROM staging.orders WHERE (status IS NULL OR TRIM(status) = '') AND dt = '{{ ds }}'",
+        },
+        {
+            "name": "no_future_dates",
+            "sql": "SELECT COUNT(*) FROM staging.orders WHERE dt > CURRENT_DATE",
+        },
+        {
+            "name": "quantity_positive",
+            "sql": "SELECT COUNT(*) FROM staging.orders WHERE quantity <= 0 AND dt = '{{ ds }}'",
+        },
+        {
+            "name": "total_amount_positive",
+            "sql": "SELECT COUNT(*) FROM staging.orders WHERE total_amount <= 0 AND dt = '{{ ds }}'",
+        },
+    ]
+
+    check_data_quality = DataQualityOperator(
+        task_id="check_data_quality",
+        rules=dq_rules,
+        postgres_conn_id="postgres_dwh",
+    )
+
+    @task.branch
+    def branch_on_dq_result(**context):
+        # on recupere le resultat du check DQ via XCom
+        ti = context["ti"]
+        dq_result = ti.xcom_pull(task_ids="check_data_quality")
+        print(f"resultat DQ: {dq_result}")
+
+        if dq_result == "pass":
+            return "transform_staging_to_dwh"
+        else:
+            return "dq_alert"
+
+    @task
+    def dq_alert(**context):
+        print("ALERTE: les controles qualite ont echoue!")
+        print("le chargement dans le DWH est annule pour cette date")
+
     # enchainement des tasks
     local_path = extract_orders()
     upload_raw_to_minio(local_path)
     nb_rows = load_staging_orders(local_path)
-    transform_staging_to_dwh() << nb_rows
+
+    # DQ check apres le staging, puis branching
+    nb_rows >> check_data_quality
+    branching = branch_on_dq_result()
+    check_data_quality >> branching
+
+    # 2 chemins possibles : transform si OK, alerte si KO
+    transform = transform_staging_to_dwh()
+    alerte = dq_alert()
+    branching >> [transform, alerte]
 
 
 marketplace_orders_ingest_daily()

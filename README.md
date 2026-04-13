@@ -15,6 +15,7 @@
 - **Stockage objet** : MinIO (S3-compatible)
 - **API source** : Flask 3.1 (Python 3.12)
 - **Dashboards** : Metabase
+- **Observabilité** : Prometheus + Grafana
 - **Visualisation BDD** : pgAdmin 4
 
 ## Architecture
@@ -29,6 +30,11 @@ flowchart LR
     PG_DWH["PostgreSQL DWH\n:5433"]
     REDIS["Redis\n:6379"]
     METABASE["Metabase\n:3000"]
+    PROM["Prometheus\n:9090"]
+    GRAFANA["Grafana\n:3001"]
+    STATSD["StatsD Exporter"]
+    PG_EXP["Postgres Exporter"]
+    NODE_EXP["Node Exporter"]
 
     API -->|GET /orders, /products\n/customers, /sellers| AF_WORKER
     AF_SCHED --> AF_WORKER
@@ -37,6 +43,12 @@ flowchart LR
     AF_WORKER <-->|broker| REDIS
     METABASE -->|lecture analytics.*| PG_DWH
     AF_API --> AF_SCHED
+    AF_WORKER -->|StatsD UDP| STATSD
+    STATSD -->|/metrics| PROM
+    PG_EXP -->|/metrics| PROM
+    NODE_EXP -->|/metrics| PROM
+    MINIO -->|/metrics| PROM
+    GRAFANA -->|query| PROM
 ```
 
 ## DAGs livres
@@ -126,9 +138,44 @@ analytics.category_metrics -- revenue + nb commandes par categorie/jour
 analytics.customer_metrics -- clients actifs par jour
 ```
 
+## Dashboards Metabase
+
+Metabase (`:3000`) est connecté au DWH PostgreSQL et expose des visualisations sur les tables `analytics.*`.
+
+![CA du jour](docs/images/ca_aujourdhui.png)
+
+![Top 5 vendeurs du jour](docs/images/top_5_vendeurs.png)
+
+## Observabilité (Prometheus + Grafana)
+
+La stack inclut une couche d'observabilité pour monitorer l'ensemble des services.
+
+**Architecture :**
+
+- **Prometheus** (`:9090`) scrape les metriques toutes les 15s avec une retention de 7 jours
+- **Grafana** (`:3001`) se connecte a Prometheus et fournit des dashboards pre-provisionnés
+- **StatsD Exporter** : recoit les metriques Airflow en UDP (port 9125) et les expose pour Prometheus
+- **Postgres Exporter** : expose les metriques PostgreSQL (connexions, requetes, etc.)
+- **Node Exporter** : expose les metriques systeme (CPU, RAM, disque)
+- **MinIO** : expose ses propres metriques sur `/minio/v2/metrics/cluster`
+
+**Dashboards Grafana pre-configures :**
+
+| Dashboard | Description |
+|---|---|
+| Airflow | Metriques des DAGs, tasks, scheduler, pool usage |
+| PostgreSQL | Connexions actives, requetes, performances |
+| MinIO | Stockage, requetes S3, bande passante |
+| Node Exporter | CPU, memoire, disque, reseau du host |
+
+Les dashboards sont provisionnés automatiquement au demarrage via les fichiers dans `monitoring/grafana/provisioning/`.
+
+![Grafana Dashboards](docs/images/grafana-dashboards.png)
+
 ## Lancement
 
 ```bash
+cp .env.example .env
 docker compose up -d
 docker compose ps
 
@@ -136,7 +183,9 @@ docker compose ps
 # MinIO Console : http://localhost:9001 (minio_admin / minio_password_2026)
 # Metabase : http://localhost:3000
 # API : http://localhost:5000/health
-# pgAdmin : http://localhost:5050
+# pgAdmin : http://localhost:5050 (admin@formation.local / admin)
+# Prometheus : http://localhost:9090
+# Grafana : http://localhost:3001 (admin / admin)
 ```
 
 ## Tests

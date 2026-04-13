@@ -1,73 +1,90 @@
-# Kit Projet — Formation Airflow IPSSI
+# Marketplace Analytics — IPSSI 2026
 
-## Prérequis
+## Membres
 
-- Docker Desktop installé et lancé
-- Au moins **4 Go de RAM** alloués à Docker
-- Ports libres : 8080 (Airflow), 9000/9001 (MinIO), 5000 (API), 5432/5433/5434 (PostgreSQL)
+- Adrien FOUQUET
+- Amaury TISSOT
+- Satya MINGUEZ
+- Léa DRUFFIN
+- Jennifer HOUNGBEDJI
+
+## Stack
+
+- **Orchestration** : Apache Airflow 3.1.8 (CeleryExecutor + Redis)
+- **Base de donnees** : PostgreSQL 17 (metadata Airflow + DWH + source)
+- **Stockage objet** : MinIO (S3-compatible)
+- **API source** : Flask 3.1 (Python 3.12)
+- **Dashboards** : Metabase
+- **Visualisation BDD** : pgAdmin 4
+
+## Architecture
+
+```mermaid
+flowchart LR
+    API["Flask API\n:5000"]
+    AF_SCHED["Airflow Scheduler"]
+    AF_WORKER["Airflow Worker"]
+    AF_API["Airflow UI\n:8080"]
+    MINIO["MinIO\n:9000/:9001"]
+    PG_DWH["PostgreSQL DWH\n:5433"]
+    REDIS["Redis\n:6379"]
+    METABASE["Metabase\n:3000"]
+
+    API -->|GET /orders, /products\n/customers, /sellers| AF_WORKER
+    AF_SCHED --> AF_WORKER
+    AF_WORKER -->|raw JSON| MINIO
+    AF_WORKER -->|staging + dwh + analytics| PG_DWH
+    AF_WORKER <-->|broker| REDIS
+    METABASE -->|lecture analytics.*| PG_DWH
+    AF_API --> AF_SCHED
+```
+
+## DAGs livres
+
+| DAG                                     | Role                                                                                     | Schedule                    |
+| --------------------------------------- | ---------------------------------------------------------------------------------------- | --------------------------- |
+| `marketplace_orders_ingest_daily`       | Extract orders API → MinIO → staging → fact_orders (avec data quality check + branching) | Manuel / trigger externe    |
+| `marketplace_dwh_build_daily`           | Refresh des dimensions (seller, customer, product, date) depuis l'API                    | `@daily`                    |
+| `marketplace_analytics_aggregate_daily` | Agregation KPIs : daily_metrics, seller_metrics, category_metrics, customer_metrics      | Asset-triggered (apres DWH) |
+
+## Composants custom
+
+| Composant             | Fichier                                      | Description                                                                                                                           |
+| --------------------- | -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `MarketplaceAPIHook`  | `plugins/hooks/marketplace_api.py`           | Hook custom (extends BaseHook) avec retry, auth Bearer, methodes `get_orders()`, `get_sellers()`, `get_products()`, `get_customers()` |
+| `DataQualityOperator` | `plugins/operators/data_quality_operator.py` | Operateur de qualite de donnees configurable (regles SQL), retourne "pass"/"fail" pour branching                                      |
+
+## Schema DWH
+
+```
+staging.orders          -- donnees brutes ingérées
+
+dwh.dim_seller          -- PK: seller_id
+dwh.dim_customer        -- PK: customer_id
+dwh.dim_product         -- PK: product_id
+dwh.dim_date            -- PK: dt
+dwh.fact_orders         -- PK: order_id, FK vers toutes les dims
+
+analytics.daily_metrics    -- KPIs journaliers (nb commandes, GMV, panier moyen)
+analytics.seller_metrics   -- revenue + nb commandes par seller/jour
+analytics.category_metrics -- revenue + nb commandes par categorie/jour
+analytics.customer_metrics -- clients actifs par jour
+```
 
 ## Lancement
 
 ```bash
-# Lancer tous les services
 docker compose up -d
-
-# Attendre ~1 minute que tout soit pret
 docker compose ps
+
+# UI Airflow : http://localhost:8080 (admin / admin)
+# MinIO Console : http://localhost:9001 (minio_admin / minio_password_2026)
+# Metabase : http://localhost:3000
+# API : http://localhost:5000/health
+# pgAdmin : http://localhost:5050
 ```
 
-## Accès aux services
-
-| Service | URL | Credentials |
-|---------|-----|-------------|
-| **Airflow UI** | <http://localhost:8080> | `admin` / `admin` |
-| **MinIO Console** | <http://localhost:9001> | `minio_admin` / `minio_password_2026` |
-| **API simulée** | <http://localhost:5000/health> | Bearer `formation-token-2026` |
-| **PostgreSQL DWH** | `localhost:5433` | `dwh_user` / `dwh_password` / db `dwh` |
-| **PostgreSQL Source** | `localhost:5434` | `source_user` / `source_password` / db `source_db` |
-
-## Endpoints de l'API simulée
-
-Toutes les requêtes nécessitent le header `Authorization: Bearer formation-token-2026`.
-
-```bash
-# Commandes
-curl -H "Authorization: Bearer formation-token-2026" "http://localhost:5000/orders?date=2026-04-07"
-curl -H "Authorization: Bearer formation-token-2026" "http://localhost:5000/customers?limit=10"
-curl -H "Authorization: Bearer formation-token-2026" "http://localhost:5000/products"
-curl -H "Authorization: Bearer formation-token-2026" "http://localhost:5000/metrics?date=2026-04-07&metric_type=page_views"
-```
-
-Les données sont **déterministes** : la même date retourne toujours les mêmes résultats.
-
-## Connections Airflow pré-configurées
-
-Les Connections sont configurées via variables d'environnement dans le docker-compose :
-
-| conn_id | Service |
-|---------|---------|
-| `postgres_dwh` | PostgreSQL DWH (schémas staging, dwh, analytics) |
-| `postgres_source` | PostgreSQL Source DB (sujet B) |
-| `minio_local` | MinIO S3-compatible (bucket `data-lake`) |
-| `api_ecommerce` | API Flask simulée |
-
-## Structure du projet
-
-```text
-kit-projet/
-|-- docker-compose.yaml    # Airflow + PostgreSQL + MinIO + API
-|-- .env                   # Variables d'environnement
-|-- dags/                  # Vos DAGs ici
-|-- plugins/
-|   |-- hooks/             # Vos Custom Hooks ici
-|   |-- operators/         # Vos Custom Operators ici
-|-- tests/                 # Tests pytest
-|-- api/                   # API Flask simulee
-|-- init-db/               # Scripts SQL d'initialisation
-|-- init-minio/            # Script de seed MinIO
-```
-
-## Lancer les tests
+## Tests
 
 pytest n'est pas installé par défaut dans le container Airflow. Il faut l'installer à la volée avant de lancer les tests :
 
@@ -75,28 +92,22 @@ pytest n'est pas installé par défaut dans le container Airflow. Il faut l'inst
 docker compose exec airflow-worker bash -c "pip install pytest && python -m pytest tests/ -v"
 ```
 
-## Sujets de mini-projets
+**Tests disponibles :**
 
-- **Sujet A** — Pipeline ELT e-commerce (extraction API → MinIO → PostgreSQL → qualité)
-- **Sujet B** — Orchestration multi-sources analytics (4 sources hétérogènes → agrégation)
+- `test_dags.py` : pas d'erreur d'import, `catchup=False` sur tous les DAGs, presence de la task idempotente `transform_staging_to_dwh`
+- `test_data_quality_operator.py` : tests unitaires du DataQualityOperator (toutes regles OK, une echoue, toutes echouent, resultat None, bonne connexion utilisee)
 
-Voir le plan de formation pour les cahiers des charges complets.
+## Choix techniques
 
-## Commandes utiles
+- **CeleryExecutor + Redis** plutot que LocalExecutor : plus proche d'un setup production, permet l'execution parallele des tasks
+- **MarketplaceAPIHook custom avec retry** : on a prefere ecrire notre propre hook avec `requests` + retry (3 tentatives, 2s de delai) plutot qu'utiliser le HttpHook de base pour avoir plus de controle
+- **DataQualityOperator avec branching** : si les regles de qualite echouent, le DAG branche vers une alerte au lieu de planter (à l'aide d'un print dans les logs)
+- **Idempotence via DELETE + INSERT** sur chaque transform : on peut rejouer n'importe quelle date sans doublon
+- **Asset-triggered scheduling** entre les DAGs : le DAG analytics se declenche automatiquement quand le DAG ingest a fini, pas besoin de TriggerDagRunOperator
+- **PostgreSQL 17** pour le DWH : version recente, stable, compatible avec les providers Airflow
 
-```bash
-# Voir les logs d'un service
-docker compose logs airflow-scheduler --tail=30
+## Limitations connues
 
-# Se connecter au DWH
-docker compose exec postgres-dwh psql -U dwh_user -d dwh
-
-# Se connecter a la source DB
-docker compose exec postgres-source psql -U source_user -d source_db
-
-# Arreter tout
-docker compose down
-
-# Arreter et supprimer les volumes (reset complet)
-docker compose down -v
-```
+- Il arrive que l'enregistrement des données dans le MinIo echoue, malgré nos meilleurs efforts, nous ne sommes pas parvenu à corriger ce problème.
+- Le DAG bonus `marketplace_anomaly_detect_daily` (detection d'anomalies avec moyenne glissante 7j) n'est pas encore implemente
+- L'endpoint `/sellers` de l'API est un ajout custom (non present dans le sujet original)

@@ -146,6 +146,8 @@ Metabase (`:3000`) est connecté au DWH PostgreSQL et expose des visualisations 
 
 ![Top 5 vendeurs du jour](docs/images/top_5_vendeurs.png)
 
+[Voir le rapport complet (PDF)](docs/Metabase%20-%20Executive%20Summary.pdf)
+
 ## Observabilité (Prometheus + Grafana)
 
 La stack inclut une couche d'observabilité pour monitorer l'ensemble des services.
